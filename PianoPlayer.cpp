@@ -21,6 +21,13 @@ using namespace std;
 
 #define FILE_COUNT 7
 
+//#define DEBUG
+
+#ifdef DEBUG
+#define PRINT(...) do { printf(__VA_ARGS__); } while (0)
+#else
+#define PRINT(...)  
+#endif
 
 const char *file[FILE_COUNT] = { C1, D1, E1, F1, G1, A1, B1};
 char* waveBuffer[FILE_COUNT];
@@ -92,12 +99,8 @@ void *audioPlayer (void *param)
 
 		int size = playSize;
 		int offset = 0;
-		while (size - offset >= 4) {
-			if (size - offset >= frameBufferSize) {
-				pcm = snd_pcm_writei(pcm_handle, audiobuffer + offset, frames);
-			} else {
-				pcm = snd_pcm_writei(pcm_handle, audiobuffer + offset, (size - offset) / 4);
-			}
+		while (size - offset >= frameBufferSize) {
+			pcm = snd_pcm_writei(pcm_handle, audiobuffer + offset, frames);
 
 			if (pcm == -EPIPE) {
 				printf("XRUN.\n");
@@ -109,7 +112,7 @@ void *audioPlayer (void *param)
 			}
 		}
 		if (size > 0)
-		printf("play %d / %d\n", offset, size);
+		PRINT("play %d / %d\n", offset, size);
 
 		(void) sem_post(&empty);
 
@@ -123,8 +126,8 @@ void *mixer (void *param)
 {
 	int *audiostop = (int*)param;
 	while (!*audiostop) {
-		//int maxSize = frameBufferSize;
-		int maxSize = sizeof(mixbuffer);
+		int maxSize = frameBufferSize;
+		//int maxSize = sizeof(mixbuffer);
 		memset(mixbuffer, 0, maxSize);
 
 		int i = 0; 
@@ -160,19 +163,17 @@ void *mixer (void *param)
 		playSize = i;
 		if (i > 0)
 		{
-			printf("Wave offset: ");
+			PRINT("Wave offset: ");
 			for (int j = 0; j < FILE_COUNT; j++)
 			{
-				printf("%d:%d \t", j, waveOffset[j]);
+				PRINT("%d:%d \t", j, waveOffset[j]);
 			}
-			printf("\n");
+			PRINT("\n");
 		}
 
 		(void) sem_wait(&empty);
 
-		pthread_mutex_lock(&audiomutex);
 		memcpy(audiobuffer, mixbuffer, i);
-		pthread_mutex_unlock(&audiomutex);
 
 		(void) sem_post(&full);
 	}
@@ -205,9 +206,26 @@ int initSound(void)
 	sem_init(&empty, 0, 1);
 	sem_init(&full, 0, 0);
 
+	pthread_attr_t tattr;
+	int ret;
+	int newprio = -20;
+	sched_param param;
+	
+	/* initialized with default attributes */
+	ret = pthread_attr_init (&tattr);
+	
+	/* safe to get existing scheduling param */
+	ret = pthread_attr_getschedparam (&tattr, &param);
+	
+	/* set the priority; others are unchanged */
+	param.sched_priority = newprio;
+	
+	/* setting the new scheduling param */
+	ret = pthread_attr_setschedparam (&tattr, &param);
+
 	// ALSA Player 생성.
 	// Audio QUEUE에 값이 들어있다면 계속 Play한다. 
-	pthread_create(&audiothread, NULL, audioPlayer, &audiostop);
+	pthread_create(&audiothread, &tattr, audioPlayer, &audiostop);
 
 	// Mux thread
 	// 개별 wave 파일의 offset 정보를 가지고 있고 offset에서 frame size만큼 하나의 출력으로 만들어 Audio Queue에 넣어 play 하도록 한다.
@@ -229,7 +247,5 @@ void stop()
 
 void play(int index)
 {
-	pthread_mutex_lock(&audiomutex);
 	waveOffset[index] = 0;
-	pthread_mutex_unlock(&audiomutex);
 }
