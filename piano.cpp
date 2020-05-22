@@ -43,7 +43,7 @@ int playing[8] = {-1};
 
 int overLimit(int i, float distance)
 {
-	float diff = 40 - distance;
+	float diff = 80 - distance;
 
 	if (diff > 0 && playing[i] < 0) {
 		playing[i] = 1;
@@ -116,6 +116,22 @@ float getAverageDist(float dist[5])
 	return 0;
 }
 
+int getLocalTime()
+{
+  time_t currentTime;
+  struct tm *localTime;
+
+  time( &currentTime );
+  localTime = localtime( &currentTime );
+
+  int Hour   = localTime->tm_hour;
+  int Min    = localTime->tm_min;
+  int Sec    = localTime->tm_sec;
+
+//  std::cout << "Execute at: " << Hour << ":" << Min << ":" << Sec << std::endl;
+	return Hour * 10000 + Min * 100 + Sec;
+}
+
 int main( void )
 {
 	int loop = 0, count, i;
@@ -136,7 +152,6 @@ int main( void )
 		printf( "pinMode output [%d] = %d \n" , i, gpio[i]);
 	}
 
-
 	// Set trigger to False (Low)
 	digitalWrite( GPIO_TRIGGER, LOW );
 	//	digitalWrite(GPIO_LED, LOW); 
@@ -144,6 +159,17 @@ int main( void )
 
 	while ( 1 )
 	{
+		int time = getLocalTime();
+		if (time < 73000 || time > 220000)
+		{
+			printf( "Sleep time.\n");
+			sleep(60);
+			continue;
+		}
+		
+		int min = 1000;
+		int mi = -1;
+		
 		for (int index = 0; index < sizeof(gpio) / sizeof(int); index++)
 		{
 			int i = randIndex[index];	
@@ -153,15 +179,22 @@ int main( void )
 
 			if (distance > 1 && overLimit(i, distance)) {
 				printf( "Distance %d: %9.1f cm\n", i, distance );
-				play(i);
+				// play(i);
+				if (min > distance) {
+					min = distance;
+					mi = i;
+				}
 			}
 
 			delay(50);
 		}
-
+		
+		if (min > 0 && min < 100) {
+			play(mi);
+		}
 
 		for (i = 0; i < sizeof(gpio) / sizeof(int); i++)
-			printf( "%d: %5.1f cm,\t", i, getAverageDist(dist[i]));
+			printf( "%d\t%d: %5.1f cm,\t", time, i, getAverageDist(dist[i]));
 		printf( "\n");
 		printf( "\n");
 
