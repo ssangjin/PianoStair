@@ -9,6 +9,23 @@
 
 using namespace std;
 
+typedef struct  WAV_HEADER{
+       char                RIFF[4];        // RIFF Header      Magic header
+       unsigned long       ChunkSize;      // RIFF Chunk Size  
+       char                WAVE[4];        // WAVE Header      
+       char                fmt[4];         // FMT header       
+       unsigned long       Subchunk1Size;  // Size of the fmt chunk                                
+       unsigned short      AudioFormat;    // Audio format 1=PCM,6=mulaw,7=alaw, 257=IBM Mu-Law, 258=IBM A-Law, 259=ADPCM 
+       unsigned short      NumOfChan;      // Number of channels 1=Mono 2=Sterio                   
+       unsigned long       SamplesPerSec;  // Sampling Frequency in Hz                             
+       unsigned long       bytesPerSec;    // bytes per second 
+       unsigned short      blockAlign;     // 2=16-bit mono, 4=16-bit stereo 
+       unsigned short      bitsPerSample;  // Number of bits per sample      
+       char                Subchunk2ID[4]; // "data"  string   
+       unsigned long       Subchunk2Size;  // Sampled data length    
+
+}wav_hdr; 
+
 #define PCM_DEVICE "default"
 
 #define C1 "316898__jaz-the-man-2__do.wav"
@@ -129,12 +146,13 @@ void *mixer (void *param)
 		int maxSize = frameBufferSize;
 		//int maxSize = sizeof(mixbuffer);
 		memset(mixbuffer, 0, maxSize);
+		int step = sizeof(short);
 
 		int i = 0; 
-		for (i = 0; i < maxSize; i++) {
+		for (i = 0; i < maxSize; i += step) {
 			int total = 0;
 			int count = 0;
-			for (int j = 0; j < FILE_COUNT; j++)
+			for (int j = 0; j < FILE_COUNT; j ++)
 			{
 				if (waveOffset[j] >= 0)
 				{
@@ -144,15 +162,18 @@ void *mixer (void *param)
 					}
 					else
 					{
-						total += (unsigned char) waveBuffer[j][waveOffset[j]];
+						short value;
+						memcpy(&value, waveBuffer[j] + waveOffset[j], step);
+						total += value;
 						count++;
-						waveOffset[j]++;
+						waveOffset[j] += step;
 					}
 				}
 			}
 
-			if (count > 0) {			
-				mixbuffer[i] = (int)(total / (float)count);
+			if (count > 0) {
+				short value = (short)(total / (float)count);
+				memcpy(mixbuffer + i, &value, step);
 			}
 			else
 			{
@@ -186,10 +207,22 @@ int loadFiles() {
 		is.seekg(0, ios::end);
 		int length = is.tellg();
 		printf("%d %s wave size: %d\n", i, file[i], length);
-		waveBuffer[i] = (char*)malloc(length);
-		fileSize[i] = length;
+		
 		is.seekg(0, ios::beg);
-		is.read (waveBuffer[i],length);
+		wav_hdr wavHeader;
+		is.read ((char*)&wavHeader, sizeof(wav_hdr));
+
+		int offset = (length - wavHeader.Subchunk2Size);
+		int dataSize = length - offset;
+		printf("\t\theader size: %d\n", offset);
+		printf("\t\tdata size: %d\n", dataSize);
+
+		is.seekg(offset, ios::beg);
+
+		waveBuffer[i] = (char*)malloc(dataSize);
+		fileSize[i] = dataSize;
+		is.seekg(offset, ios::beg);
+		is.read (waveBuffer[i], dataSize);
 		is.close();
 	}
 	return 0;
@@ -248,4 +281,53 @@ void stop()
 void play(int index)
 {
 	waveOffset[index] = 0;
+}
+
+void printWaveHeader(int index)
+{
+	wav_hdr* wavHeader = (wav_hdr*)waveBuffer[index];
+  int headerSize = sizeof(wav_hdr),filelength = fileSize[index];
+
+	cout << "File is                    :" << filelength << " bytes." << endl;
+	
+	cout << "RIFF header                :" << wavHeader->RIFF[0] 
+	                                       << wavHeader->RIFF[1] 
+	                                       << wavHeader->RIFF[2] 
+	                                       << wavHeader->RIFF[3] << endl;
+	
+	cout << "WAVE header                :" << wavHeader->WAVE[0] 
+	                                       << wavHeader->WAVE[1] 
+	                                       << wavHeader->WAVE[2] 
+	                                       << wavHeader->WAVE[3] 
+	                                       << endl;
+	
+	cout << "FMT                        :" << wavHeader->fmt[0] 
+	                                       << wavHeader->fmt[1] 
+	                                       << wavHeader->fmt[2] 
+	                                       << wavHeader->fmt[3] 
+	                                       << endl;
+	
+	cout << "Data size                  :" << wavHeader->ChunkSize << endl;
+	
+	// Display the sampling Rate form the header
+	cout << "Sampling Rate              :" << wavHeader->SamplesPerSec << endl;
+	cout << "Number of bits used        :" << wavHeader->bitsPerSample << endl;
+	cout << "Number of channels         :" << wavHeader->NumOfChan << endl;
+	cout << "Number of bytes per second :" << wavHeader->bytesPerSec << endl;
+	cout << "Data length                :" << wavHeader->Subchunk2Size << endl;
+	cout << "Audio Format               :" << wavHeader->AudioFormat << endl;
+	// Audio format 1=PCM,6=mulaw,7=alaw, 257=IBM Mu-Law, 258=IBM A-Law, 259=ADPCM 
+	
+	
+	cout << "Block align                :" << wavHeader->blockAlign << endl;
+	
+	cout << "Data string                :" << wavHeader->Subchunk2ID[0] 
+	                                       << wavHeader->Subchunk2ID[1]
+	                                       << wavHeader->Subchunk2ID[2] 
+	                                       << wavHeader->Subchunk2ID[3] 
+	                                       << endl;
+	
+	cout << "Header size                :" << (filelength - wavHeader->ChunkSize)  << endl;
+	cout << "Header size2               :" << (filelength - wavHeader->Subchunk2Size)  << endl;
+	cout << endl << endl;
 }

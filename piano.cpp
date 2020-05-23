@@ -43,7 +43,7 @@ int playing[8] = {-1};
 
 int overLimit(int i, float distance)
 {
-	float diff = 80 - distance;
+	float diff = 60 - distance;
 
 	if (diff > 0 && playing[i] < 0) {
 		playing[i] = 1;
@@ -172,24 +172,30 @@ int main( void )
 		
 		for (int index = 0; index < sizeof(gpio) / sizeof(int); index++)
 		{
+			if (playing[i])
+			{
+				continue;
+			}
+			
 			int i = randIndex[index];	
 			//printf( "%d : %d\n", index, i);
 			dist[i][distIndex] = get_distance(gpio[i]);
 			float distance = getAverageDist(dist[i]);
 
 			if (distance > 1 && overLimit(i, distance)) {
+				play(i);
 				printf( "Distance %d: %9.1f cm\n", i, distance );
-				// play(i);
 				if (min > distance) {
 					min = distance;
 					mi = i;
 				}
 			}
 
-			delay(50);
+			delay(10);
 		}
 		
 		if (min > 0 && min < 100) {
+			printf( "Play %d\n", mi);
 			play(mi);
 		}
 

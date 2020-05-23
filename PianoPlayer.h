@@ -3,4 +3,4 @@
 int initSound(void);
 void stop();
 void play(int index);
-
+void printWaveHeader(int index);
